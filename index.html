@@ -3,26 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <title>Dashboard Comunidades</title>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
 body{margin:0;font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;}
 header{padding:20px;font-size:24px;font-weight:bold;}
-.controls{display:flex;gap:10px;padding:20px;flex-wrap:wrap;align-items:center}
-select,button{padding:10px;border-radius:8px;border:none}
-button{background:#22c55e;color:white;cursor:pointer}
+.controls{display:flex;gap:10px;padding:20px;flex-wrap:wrap;}
+button{padding:10px;border-radius:8px;border:none;background:#22c55e;color:white;cursor:pointer}
 .tabs{display:flex;gap:10px;padding:0 20px 10px}
 .tab-btn{background:#1e293b;color:#fff}
 .tab-btn.active{background:#22c55e}
 .layout{display:flex}
-.sidebar{width:260px;background:#020617;padding:20px;overflow:auto;height:calc(100vh - 140px);border-right:1px solid #1e293b}
-.sidebar h4{margin-bottom:10px}
-.sidebar label{display:block;font-size:12px;margin-bottom:6px;cursor:pointer}
+.sidebar{width:260px;background:#020617;padding:20px;overflow:auto;height:calc(100vh - 140px)}
 .grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;padding:20px}
-.card{background:#1e293b;padding:15px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
-.card h3{font-size:14px;margin-bottom:10px}
+.card{background:#1e293b;padding:15px;border-radius:16px}
 .hidden{display:none}
+.sidebar label{display:block;margin-bottom:6px;cursor:pointer}
 </style>
 </head>
 
@@ -30,123 +28,163 @@ button{background:#22c55e;color:white;cursor:pointer}
 <header>📊 Dashboard Comunidades</header>
 
 <div class="controls">
-  <select id="start"></select>
-  <select id="end"></select>
-  <button onclick="applyFilter()">Filtrar</button>
   <button onclick="showTopBottom('top')">Top 5</button>
   <button onclick="showTopBottom('bottom')">Bottom 5</button>
   <button onclick="resetView()">Reset</button>
-  <button onclick="saveFilter()">Salvar</button>
   <button onclick="exportExcel()">Excel</button>
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('dashboard', this)">📊 Dashboard</button>
-  <button class="tab-btn" onclick="switchTab('ranking', this)">🏆 Ranking</button>
+  <button class="tab-btn" onclick="switchTab('dashboard', this)">Dashboard Lojas</button>
+  <button class="tab-btn active" onclick="switchTab('ranking', this)">Ranking</button>
 </div>
 
-<!-- DASHBOARD -->
-<div id="tab-dashboard">
-  <div class="controls" style="padding-top:0">
-    <div id="totalCard" class="card" style="min-width:200px"></div>
-  </div>
-
+<div id="tab-dashboard" class="hidden">
   <div class="layout">
     <div class="sidebar">
-      <h4>👁️ Exibir/Ocultar</h4>
+      <!-- TOTAL FICA AQUI -->
+      <div id="totalBox" class="card" style="margin-bottom:15px"></div>
+
+      <h4>Exibir/Ocultar</h4>
       <div id="toggleList"></div>
     </div>
     <div class="grid" id="charts"></div>
   </div>
 </div>
 
-<!-- RANKING -->
-<div id="tab-ranking" class="hidden">
+<div id="tab-ranking">
   <div class="card" style="margin:20px">
-    <h3>🏆 Ranking de Lojas</h3>
-    <div id="rankingTotal" style="font-size:12px;margin-bottom:10px;color:#ccc"></div>
-    <div style="height:1200px">
-      <canvas id="rankingChart"></canvas>
-    </div>
+    <h3 id="rankingTitle">Ranking de Lojas</h3>
+    <div style="height:1200px"><canvas id="rankingChart"></canvas></div>
   </div>
 </div>
 
 <script>
-const start = document.getElementById("start");
-const end = document.getElementById("end");
+// ================= CONFIG BASE =================
 const charts = document.getElementById("charts");
 const toggleList = document.getElementById("toggleList");
 const rankingChartEl = document.getElementById("rankingChart");
-const rankingTotalEl = document.getElementById("rankingTotal");
+const rankingTitle = document.getElementById("rankingTitle");
+const totalBox = document.getElementById("totalBox");
+
 let rankingChart;
-const totalCard = document.getElementById("totalCard");
+let hiddenStores=new Set();
+let currentOrder=null;
 
+// ================= NAVEGAÇÃO =================
 function switchTab(tab, el){
-  document.getElementById('tab-dashboard').classList.add('hidden');
-  document.getElementById('tab-ranking').classList.add('hidden');
-
+  ['dashboard','ranking'].forEach(t=>document.getElementById('tab-'+t).classList.add('hidden'));
   document.getElementById('tab-'+tab).classList.remove('hidden');
-
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
 }
 
-const months=["Jun/25","Jul/25","Ago/25","Set/25","Out/25","Nov/25","Dez/25","Jan/26","Fev/26","Mar/26"];
+// ================= DADOS =================
 
-const data={
+/*
+⚠️ COMO ATUALIZAR OS DADOS (PADRÃO OFICIAL)
+
+1. NUNCA altere o nome das lojas
+2. Apenas adicione ou edite números dentro dos colchetes []
+3. Sempre mantenha a mesma ordem dos meses
+4. Para adicionar novo mês:
+   - adicione o nome em "months"
+   - adicione o valor no FINAL de cada loja
+
+Exemplo:
+"Asun Santana": [727,738,717, NOVO_VALOR]
+*/
+
+const months=["Jun","Jul","Ago","Set","Out","Nov","Dez","Jan","Fev","Mar"];
+
+// 🔒 BASE DE LOJAS (NÃO ALTERAR NOMES)
+const STORES = [
+"Asun Santana",
+"Asun Plinio",
+"Asun Canoas Fatima",
+"Asun Imbe",
+"Asun Canoas Niteroi",
+"Asun Pinhal Centro",
+"Asun Republica",
+"Asun Torres",
+"Asun Quintao",
+"Asun Guaiba",
+"Asun Magisterio",
+"Asun Cavalhada",
+"Leve Mais Gravatai",
+"Asun Eldorado",
+"Asun Juca Batista",
+"Asun Xangri-la 2",
+"Asun Xangri-la",
+"Asun Nova Tramandai",
+"Asun Tramandai",
+"Asun Azenha",
+"Asun Mariluz",
+"Asun Canoas Igara",
+"Asun Restinga",
+"Asun Noiva do Mar",
+"Leve Mais Parque dos Maias",
+"Asun Gravatai",
+"Asun Dois Irmaos",
+"Asun Osorio",
+"Asun Cachoeirinha Centro",
+"Asun Pontal",
+"Asun Montenegro",
+"Leve Mais Pinhal",
+"Asun Estancia Velha",
+"Leve Mais Santa Maria"
+];
+
+// 🔢 DADOS EDITÁVEIS (APENAS NÚMEROS)
+const VALUES = {
 "Asun Santana":[727,738,717,719,735,731,726,721,717,712],
 "Asun Plinio":[1135,1157,1189,1212,1205,1201,1222,1217,1207,1192],
 "Asun Canoas Fatima":[559,556,556,554,555,542,539,532,523,516],
-"Asun Imbé":[723,711,707,699,690,689,688,693,691,682],
+"Asun Imbe":[723,711,707,699,690,689,688,693,691,682],
 "Asun Canoas Niteroi":[401,401,399,402,399,395,395,386,384,376],
 "Asun Pinhal Centro":[581,588,593,596,604,598,618,623,625,616],
-"Asun República":[830,858,844,867,869,872,863,872,865,856],
+"Asun Republica":[830,858,844,867,869,872,863,872,865,856],
 "Asun Torres":[542,543,541,549,549,540,544,542,542,527],
-"Asun Quintão":[483,487,482,482,485,482,497,496,493,484],
-"Asun Guaíba":[594,611,612,620,607,593,584,571,561,548],
-"Asun Alvorada":[451,431,415,400,373,360,355,0,0,0],
-"Asun Magistério":[499,495,494,484,485,478,490,489,490,486],
+"Asun Quintao":[483,487,482,482,485,482,497,496,493,484],
+"Asun Guaiba":[594,611,612,620,607,593,584,571,561,548],
+"Asun Magisterio":[499,495,494,484,485,478,490,489,490,486],
 "Asun Cavalhada":[890,888,896,902,899,887,880,874,861,856],
-"Leve Mais Gravataí":[660,666,701,710,710,709,704,688,676,673],
+"Leve Mais Gravatai":[660,666,701,710,710,709,704,688,676,673],
 "Asun Eldorado":[567,568,571,578,577,574,577,568,564,564],
 "Asun Juca Batista":[1096,1103,1126,1134,1137,1126,1120,1122,1112,1102],
-"Asun Xangri-lá 2":[16,14,16,17,17,16,15,14,14,14],
-"Asun Xangri-lá":[628,631,637,637,632,631,638,633,630,614],
-"Leve Mais Nova Tramandaí":[580,618,599,606,600,597,590,585,580,571],
-"Asun Tramandaí":[748,740,718,733,758,755,769,764,766,759],
+"Asun Xangri-la 2":[16,14,16,17,17,16,15,14,14,14],
+"Asun Xangri-la":[628,631,637,637,632,631,638,633,630,614],
+"Asun Nova Tramandai":[580,618,599,606,600,597,590,585,580,571],
+"Asun Tramandai":[748,740,718,733,758,755,769,764,766,759],
 "Asun Azenha":[1156,1183,1217,1250,1261,1252,1270,1272,1273,1253],
 "Asun Mariluz":[455,456,457,464,467,460,465,467,459,445],
 "Asun Canoas Igara":[635,635,645,645,649,642,640,628,614,606],
-"Leve Mais Restinga":[1142,1158,1175,1192,1193,1191,1188,1174,1164,1137],
+"Asun Restinga":[1142,1158,1175,1192,1193,1191,1188,1174,1164,1137],
 "Asun Noiva do Mar":[388,386,393,388,393,383,399,398,402,399],
 "Leve Mais Parque dos Maias":[711,719,743,763,762,766,764,766,766,766],
-"Asun Gravataí":[637,625,613,598,604,599,601,591,578,570],
-"Asun Dois Irmãos":[482,488,501,501,498,490,490,486,481,471],
-"Asun Osório":[723,716,705,705,705,699,705,699,699,687],
+"Asun Gravatai":[637,625,613,598,604,599,601,591,578,570],
+"Asun Dois Irmaos":[482,488,501,501,498,490,490,486,481,471],
+"Asun Osorio":[723,716,705,705,705,699,705,699,699,687],
 "Asun Cachoeirinha Centro":[903,894,884,866,873,887,909,905,896,878],
 "Asun Pontal":[695,683,663,655,653,647,656,660,660,656],
 "Asun Montenegro":[652,656,654,662,659,658,655,654,641,629],
 "Leve Mais Pinhal":[575,570,573,572,567,572,578,594,595,602],
-"Asun Estância Velha":[547,546,553,555,553,546,543,539,528,518],
+"Asun Estancia Velha":[547,546,553,555,553,546,543,539,528,518],
 "Leve Mais Santa Maria":[636,632,626,621,619,613,600,594,586,575]
 };
 
-let hiddenStores=new Set();
+// 🔁 NÃO ALTERAR - MAPEAMENTO AUTOMÁTICO
+const data = {};
+STORES.forEach(store=>{
+  data[store] = VALUES[store];
+});
 
-function initFilters(){
-  months.forEach((m,i)=>{
-    start.innerHTML+=`<option value="${i}">${m}</option>`;
-    end.innerHTML+=`<option value="${i}">${m}</option>`;
-  });
-  end.value=months.length-1;
-}
-
+// ================= UI =================
 function renderToggles(){
   toggleList.innerHTML="";
   Object.keys(data).forEach(name=>{
     const label=document.createElement("label");
-    const checked=!hiddenStores.has(name);
-    label.innerHTML=`<input type='checkbox' ${checked?"checked":""} onchange="toggleStore('${name}')"> ${name}`;
+    label.innerHTML=`<input type='checkbox' checked onchange="toggleStore('${name}')"> ${name}`;
     toggleList.appendChild(label);
   });
 }
@@ -154,42 +192,36 @@ function renderToggles(){
 function toggleStore(name){
   if(hiddenStores.has(name)) hiddenStores.delete(name);
   else hiddenStores.add(name);
-  renderCharts(+start.value,+end.value);
+  renderCharts();
 }
 
+// ================= LÓGICA =================
 function getSortedStores(){
-  const lastIndex = +end.value;
   return Object.entries(data)
-    .map(([name,values])=>({name,value:values[lastIndex]}))
+    .map(([name,values])=>({name,value:values[values.length-1]}))
     .sort((a,b)=>b.value-a.value);
 }
 
 function showTopBottom(type){
   const sorted = getSortedStores();
-  let selected;
-
-  if(type==='top') selected = sorted.slice(0,5);
-  else selected = sorted.slice(-5);
-
+  currentOrder = type==='top' ? sorted.slice(0,5) : sorted.slice(-5);
   hiddenStores = new Set(Object.keys(data));
-  selected.forEach(s=>hiddenStores.delete(s.name));
-
-  renderToggles();
-  renderCharts(+start.value,+end.value);
+  currentOrder.forEach(s=>hiddenStores.delete(s.name));
+  renderCharts();
 }
 
 function resetView(){
   hiddenStores = new Set();
-  renderToggles();
-  renderCharts(+start.value,+end.value);
+  currentOrder=null;
+  renderCharts();
 }
 
+// ================= RENDER =================
 function renderRanking(){
+  const totalStores = Object.keys(data).length;
+  rankingTitle.innerText = "Ranking de Lojas (" + totalStores + " lojas)";
+
   const sorted = getSortedStores();
-
-  // total de lojas
-  rankingTotalEl.innerText = 'Total de lojas: ' + sorted.length;
-
   const labels = sorted.map(s=>s.name);
   const values = sorted.map(s=>s.value);
 
@@ -197,58 +229,26 @@ function renderRanking(){
 
   rankingChart = new Chart(rankingChartEl,{
     type:'bar',
-    data:{
-      labels:labels,
-      datasets:[{
-        data:values,
-        borderWidth:1
-      }]
-    },
-    options:{
-      maintainAspectRatio:false,
-      indexAxis:'y',
-      plugins:{
-        legend:{display:false},
-        tooltip:{enabled:true}
-      },
-      scales:{
-        x:{ticks:{color:'#ccc'}},
-        y:{ticks:{color:'#ccc'}}
-      }
-    },
-    plugins:[{
-      id:'labelsInside',
-      afterDatasetsDraw(chart){
-        const {ctx} = chart;
-        ctx.save();
-        chart.getDatasetMeta(0).data.forEach((bar,index)=>{
-          const value = values[index];
-          ctx.fillStyle = '#fff';
-          ctx.font = '10px sans-serif';
-          ctx.fillText(value, bar.x - 30, bar.y + 3);
-        });
-        ctx.restore();
-      }
-    }]
+    data:{labels,datasets:[{data:values}]},
+    options:{maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}}}
   });
 }
 
-function renderTotal(){
-  const lastIndex = +end.value;
-  let total = 0;
+function renderCharts(){
+  // TOTAL
+  const totalAll = Object.values(data).reduce((acc,arr)=>acc + arr[arr.length-1],0);
+  totalBox.innerHTML = "<h3>Total de Pessoas</h3><p style='font-size:22px;font-weight:bold'>" + totalAll + "</p>";
 
-  Object.values(data).forEach(values=>{
-    total += values[lastIndex];
-  });
-
-  totalCard.innerHTML = `<h3>📊 Total Geral</h3><div style="font-size:22px;font-weight:bold">${total}</div>`;
-}
-
-function renderCharts(s=0,e=months.length-1){
   renderRanking();
-  renderTotal();
   charts.innerHTML="";
-  Object.entries(data).forEach(([name,values])=>{
+
+  let entries = Object.entries(data);
+
+  if(currentOrder){
+    entries = currentOrder.map(s=>[s.name,data[s.name]]);
+  }
+
+  entries.forEach(([name,values])=>{
     if(hiddenStores.has(name)) return;
 
     const card=document.createElement("div");
@@ -263,28 +263,8 @@ function renderCharts(s=0,e=months.length-1){
     card.appendChild(canvas);
     charts.appendChild(card);
 
-    new Chart(canvas,{
-      type:"line",
-      data:{labels:months.slice(s,e+1),datasets:[{data:values.slice(s,e+1),borderWidth:2}]},
-      options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#ccc"}},y:{ticks:{color:"#ccc"}}}}
-    });
+    new Chart(canvas,{type:"line",data:{labels:months,datasets:[{data:values}]},options:{plugins:{legend:{display:false}}}});
   });
-}
-
-function applyFilter(){renderCharts(+start.value,+end.value);}
-
-function saveFilter(){
-  localStorage.setItem("filtro",JSON.stringify({start:start.value,end:end.value,hidden:[...hiddenStores]}));
-  alert("Salvo!");
-}
-
-function loadFilter(){
-  const f=JSON.parse(localStorage.getItem("filtro"));
-  if(f){
-    start.value=f.start;
-    end.value=f.end;
-    hiddenStores=new Set(f.hidden||[]);
-  }
 }
 
 function exportExcel(){
@@ -302,11 +282,10 @@ function exportExcel(){
   XLSX.writeFile(wb,"relatorio.xlsx");
 }
 
-initFilters();
-loadFilter();
+// INIT
 renderToggles();
 renderCharts();
-</script>
 
+</script>
 </body>
 </html>
