@@ -64,7 +64,10 @@ button{background:#22c55e;color:white;cursor:pointer}
 <div id="tab-ranking" class="hidden">
   <div class="card" style="margin:20px">
     <h3>🏆 Ranking de Lojas</h3>
-    <div id="ranking"></div>
+    <div id="rankingTotal" style="font-size:12px;margin-bottom:10px;color:#ccc"></div>
+    <div style="height:1200px">
+      <canvas id="rankingChart"></canvas>
+    </div>
   </div>
 </div>
 
@@ -73,7 +76,9 @@ const start = document.getElementById("start");
 const end = document.getElementById("end");
 const charts = document.getElementById("charts");
 const toggleList = document.getElementById("toggleList");
-const ranking = document.getElementById("ranking");
+const rankingChartEl = document.getElementById("rankingChart");
+const rankingTotalEl = document.getElementById("rankingTotal");
+let rankingChart;
 const totalCard = document.getElementById("totalCard");
 
 function switchTab(tab, el){
@@ -181,14 +186,50 @@ function resetView(){
 
 function renderRanking(){
   const sorted = getSortedStores();
-  ranking.innerHTML = "";
 
-  sorted.forEach((item,i)=>{
-    const div = document.createElement("div");
-    div.style.fontSize="12px";
-    div.style.marginBottom="4px";
-    div.innerText = `${i+1}º - ${item.name} (${item.value})`;
-    ranking.appendChild(div);
+  // total de lojas
+  rankingTotalEl.innerText = 'Total de lojas: ' + sorted.length;
+
+  const labels = sorted.map(s=>s.name);
+  const values = sorted.map(s=>s.value);
+
+  if(rankingChart) rankingChart.destroy();
+
+  rankingChart = new Chart(rankingChartEl,{
+    type:'bar',
+    data:{
+      labels:labels,
+      datasets:[{
+        data:values,
+        borderWidth:1
+      }]
+    },
+    options:{
+      maintainAspectRatio:false,
+      indexAxis:'y',
+      plugins:{
+        legend:{display:false},
+        tooltip:{enabled:true}
+      },
+      scales:{
+        x:{ticks:{color:'#ccc'}},
+        y:{ticks:{color:'#ccc'}}
+      }
+    },
+    plugins:[{
+      id:'labelsInside',
+      afterDatasetsDraw(chart){
+        const {ctx} = chart;
+        ctx.save();
+        chart.getDatasetMeta(0).data.forEach((bar,index)=>{
+          const value = values[index];
+          ctx.fillStyle = '#fff';
+          ctx.font = '10px sans-serif';
+          ctx.fillText(value, bar.x - 30, bar.y + 3);
+        });
+        ctx.restore();
+      }
+    }]
   });
 }
 
