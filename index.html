@@ -12,13 +12,17 @@ header{padding:20px;font-size:24px;font-weight:bold;}
 .controls{display:flex;gap:10px;padding:20px;flex-wrap:wrap;align-items:center}
 select,button{padding:10px;border-radius:8px;border:none}
 button{background:#22c55e;color:white;cursor:pointer}
+.tabs{display:flex;gap:10px;padding:0 20px 10px}
+.tab-btn{background:#1e293b;color:#fff}
+.tab-btn.active{background:#22c55e}
 .layout{display:flex}
-.sidebar{width:260px;background:#020617;padding:20px;overflow:auto;height:calc(100vh - 80px);border-right:1px solid #1e293b}
+.sidebar{width:260px;background:#020617;padding:20px;overflow:auto;height:calc(100vh - 140px);border-right:1px solid #1e293b}
 .sidebar h4{margin-bottom:10px}
 .sidebar label{display:block;font-size:12px;margin-bottom:6px;cursor:pointer}
 .grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;padding:20px}
 .card{background:#1e293b;padding:15px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
 .card h3{font-size:14px;margin-bottom:10px}
+.hidden{display:none}
 </style>
 </head>
 
@@ -29,23 +33,62 @@ button{background:#22c55e;color:white;cursor:pointer}
   <select id="start"></select>
   <select id="end"></select>
   <button onclick="applyFilter()">Filtrar</button>
+  <button onclick="showTopBottom('top')">Top 5</button>
+  <button onclick="showTopBottom('bottom')">Bottom 5</button>
+  <button onclick="resetView()">Reset</button>
   <button onclick="saveFilter()">Salvar</button>
   <button onclick="exportExcel()">Excel</button>
 </div>
 
-<div class="layout">
-  <div class="sidebar">
-    <h4>👁️ Exibir/Ocultar</h4>
-    <div id="toggleList"></div>
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('dashboard', this)">📊 Dashboard</button>
+  <button class="tab-btn" onclick="switchTab('ranking', this)">🏆 Ranking</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard">
+  <div class="controls" style="padding-top:0">
+    <div id="totalCard" class="card" style="min-width:200px"></div>
   </div>
-  <div class="grid" id="charts"></div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <h4>👁️ Exibir/Ocultar</h4>
+      <div id="toggleList"></div>
+    </div>
+    <div class="grid" id="charts"></div>
+  </div>
+</div>
+
+<!-- RANKING -->
+<div id="tab-ranking" class="hidden">
+  <div class="card" style="margin:20px">
+    <h3>🏆 Ranking de Lojas</h3>
+    <div id="ranking"></div>
+  </div>
 </div>
 
 <script>
+const start = document.getElementById("start");
+const end = document.getElementById("end");
+const charts = document.getElementById("charts");
+const toggleList = document.getElementById("toggleList");
+const ranking = document.getElementById("ranking");
+const totalCard = document.getElementById("totalCard");
+
+function switchTab(tab, el){
+  document.getElementById('tab-dashboard').classList.add('hidden');
+  document.getElementById('tab-ranking').classList.add('hidden');
+
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
 const months=["Jun/25","Jul/25","Ago/25","Set/25","Out/25","Nov/25","Dez/25","Jan/26","Fev/26","Mar/26"];
 
 const data={
-"Selnir Silva":[2,2,2,2,2,2,2,2,2,2],
 "Asun Santana":[727,738,717,719,735,731,726,721,717,712],
 "Asun Plinio":[1135,1157,1189,1212,1205,1201,1222,1217,1207,1192],
 "Asun Canoas Fatima":[559,556,556,554,555,542,539,532,523,516],
@@ -109,7 +152,60 @@ function toggleStore(name){
   renderCharts(+start.value,+end.value);
 }
 
+function getSortedStores(){
+  const lastIndex = +end.value;
+  return Object.entries(data)
+    .map(([name,values])=>({name,value:values[lastIndex]}))
+    .sort((a,b)=>b.value-a.value);
+}
+
+function showTopBottom(type){
+  const sorted = getSortedStores();
+  let selected;
+
+  if(type==='top') selected = sorted.slice(0,5);
+  else selected = sorted.slice(-5);
+
+  hiddenStores = new Set(Object.keys(data));
+  selected.forEach(s=>hiddenStores.delete(s.name));
+
+  renderToggles();
+  renderCharts(+start.value,+end.value);
+}
+
+function resetView(){
+  hiddenStores = new Set();
+  renderToggles();
+  renderCharts(+start.value,+end.value);
+}
+
+function renderRanking(){
+  const sorted = getSortedStores();
+  ranking.innerHTML = "";
+
+  sorted.forEach((item,i)=>{
+    const div = document.createElement("div");
+    div.style.fontSize="12px";
+    div.style.marginBottom="4px";
+    div.innerText = `${i+1}º - ${item.name} (${item.value})`;
+    ranking.appendChild(div);
+  });
+}
+
+function renderTotal(){
+  const lastIndex = +end.value;
+  let total = 0;
+
+  Object.values(data).forEach(values=>{
+    total += values[lastIndex];
+  });
+
+  totalCard.innerHTML = `<h3>📊 Total Geral</h3><div style="font-size:22px;font-weight:bold">${total}</div>`;
+}
+
 function renderCharts(s=0,e=months.length-1){
+  renderRanking();
+  renderTotal();
   charts.innerHTML="";
   Object.entries(data).forEach(([name,values])=>{
     if(hiddenStores.has(name)) return;
